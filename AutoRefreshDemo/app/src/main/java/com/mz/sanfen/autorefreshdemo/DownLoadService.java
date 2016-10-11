@@ -24,8 +24,6 @@ import retrofit2.Response;
 
 public class DownLoadService extends Service {
 
-
-
     private String mDownLoadUrl;
 
     private NotificationManager mNotificationManager;
