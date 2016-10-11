@@ -7,10 +7,20 @@ import android.app.Service;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.IBinder;
-import android.os.storage.StorageManager;
 import android.support.v4.app.NotificationCompat;
+import android.util.Log;
+
+import com.mz.sanfen.autorefreshdemo.helper.ProgressResponseBody;
+import com.mz.sanfen.autorefreshdemo.helper.ProgressResponseListener;
+import com.mz.sanfen.autorefreshdemo.helper.RetrofitHelper;
+import com.mz.sanfen.autorefreshdemo.utils.FileUtils;
 
 import java.io.File;
+
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class DownLoadService extends Service {
 
@@ -22,6 +32,9 @@ public class DownLoadService extends Service {
 
     private Notification mNotification;
 
+    NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
+
+    private String fileName;
 
     public DownLoadService() {
     }
@@ -43,10 +56,38 @@ public class DownLoadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
 
         if (intent == null){
-
+            stopSelf();
+        } else {
+            mDownLoadUrl = intent.getStringExtra("appUrl");
+            fileName = intent.getStringExtra("filename");
+            downLoadFile(fileName);
         }
 
         return super.onStartCommand(intent, flags, startId);
+    }
+
+    private void downLoadFile(final String fileName) {
+        RetrofitHelper.getInstanse()
+                .downloadFile(mDownLoadUrl, new ProgressResponseListener() {
+                    @Override
+                    public void onResponseProgress(long bytesRead, long contentLength, boolean done) {
+                        notifyMsg("AutoRefreshDemo", "下载中", (int) (100 * bytesRead / contentLength));
+                    }
+                })
+                .enqueue(new Callback<ResponseBody>() {
+                    @Override
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        if (response.body() != null){
+                            FileUtils.write(fileName, (response.body().byteStream()));
+                            startActivity(getInstallIntent(fileName));
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        Log.e("error", t.getMessage() + t.toString());
+                    }
+                });
     }
 
 
@@ -57,7 +98,6 @@ public class DownLoadService extends Service {
      * @param progress
      */
     private void notifyMsg(String title, String content, int progress){
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
         builder.setSmallIcon(R.mipmap.ic_launcher);
         if (progress > 0 && progress < 100){
             builder.setProgress(100, progress, false);
@@ -69,10 +109,7 @@ public class DownLoadService extends Service {
         builder.setWhen(System.currentTimeMillis());
         builder.setContentText(content);
 
-        if (progress >= 100){
-            builder.setContentIntent(getInstallIntent());
-        }
-
+        mNotificationManager.notify(0, builder.build());
 
     }
 
@@ -80,20 +117,14 @@ public class DownLoadService extends Service {
     /**
      * 安装apk
      * @return
+     * @param fileName
      */
-    private PendingIntent getInstallIntent(){
-        File file = new File("file");
+    private Intent getInstallIntent(String fileName){
+        File file = new File(fileName);
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.setDataAndType(Uri.parse("file://" + file.getAbsolutePath()), "application/vnd.android.package-archive");
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-        return pendingIntent;
-    }
-
-
-    private void downloadFile(){
-        stopSelf();
-
+        return intent;
     }
 
 
